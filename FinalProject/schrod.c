@@ -88,7 +88,7 @@ void printmatrix(complex * A, int N){
   int i, j;
   for(i=0;i<N;++i){
     for(j=0;j<N;++j){
-      printf("%e  ", cabs(A[i*N + j]));
+      printf("%e  ", creal(A[i*N + j]));
     }
     printf("\n");
   }
@@ -126,7 +126,7 @@ complex D2( complex uipo, complex ui, complex uimo, double dx){
 int condition(int i, int Nh, int range){
   return(i> Nh-range && i<Nh+range);
 }
-void initialize_system(complex * U, int N, double dx){
+void initialize_system1(complex * U, int N, double dx){
   int Nh = N/2;
   int i, j;
   for(i=0;i<N;++i){
@@ -138,11 +138,23 @@ void initialize_system(complex * U, int N, double dx){
     }
   }
 }
+void initialize_system2(complex * U, int N, double dx){
+  int Nh = N/2;
+  int i, j;
+  for(i=0;i<N;++i){
+    for(j=0;j<N;++j){
+      complex x = (i)*dx;
+      complex y = (j)*dx;
+      complex r2 = cpow(x,2)+cpow(y,2);
+      U[i*N + j] = cpow(x,2)*cpow(y,2);
+    }
+  }
+}
 void write_U(FILE * fid, complex * U, int N, double ds){
   int i,j;
   for(i=0;i<N;++i){
     for(j=0;j<N;++j){
-      fprintf(fid, "%e   %e   %e\n",(double)i *ds, (double)j *ds, cabs(cpow(U[i*N+j],2)));
+      fprintf(fid, "%e   %e   %e\n",(double)i *ds, (double)j *ds, creal(conj(U[i*N+j])*U[i*N+j]));
     }
     //fprintf(fid, "\n");
   }
@@ -179,21 +191,31 @@ void make_D(complex * D, int N, double dx, double dt, complex pm){
     }
   }
 }
-void advance_yexp(complex * U, int N, double dt, double dx){
+void add_V(complex * ui, complex * vi, complex * uio, int N, double dt){
+  complex coeff = dt*I/2.;
+  int i;for(i=0;i<N;++i){
+    ui[i] -= coeff*vi[i]*uio[i];
+  }
+}
+void advance_yexp(complex * U, int N, double dt, double dx, complex * V){
   int k; 
   for(k=0;k<N;++k){ //loop over columns of U
     complex Dy[(N)*(N)]; make_D(Dy, N, dx, dt, 1.);  //make update matrix
-    complex uy[N]; getcol(U, uy, k, N);  
+    complex uy[N]; getcol(U, uy, k, N);
+    complex vy[N]; getcol(V, vy, k, N);  
     complex uy_new[N]; matrix_dot(Dy, uy, uy_new, N);//update column
+    add_V(uy_new, vy, uy, N, dt);
     setcol(U, uy_new, k, N);
   }
 }
-void advance_xexp(complex * U, int N, double dt, double dx){
+void advance_xexp(complex * U, int N, double dt, double dx, complex * V){
   int k;
   for(k=0;k<N;++k){
     complex Dx[(N)*(N)]; make_D(Dx, N, dx, dt, 1.);//make derivative matrix
     complex ux[N], ux_new[N]; getrow(U, ux, k, N);   //get row to update
-    matrix_dot(Dx, ux, ux_new, N); setrow(U, ux_new, k, N);
+    complex vx[N]; getrow(V, vx, k, N);
+    matrix_dot(Dx, ux, ux_new, N); add_V(ux_new, vx, ux, N, dt);
+    setrow(U, ux_new, k, N);
   }
 }
 void advance_ximp(complex * U, int N, double dt, double dx){
@@ -227,12 +249,39 @@ void gaussbound(complex * U, int N, double dx){
     U[i*N + j] = cexp(-r2);  
   }
 }
-
-void advance_system(complex * U, int N, double dt, double dx){
-  advance_yexp(U, N, dt, dx);
+void make_V1(complex * V, int N, double dx){
+  int i, j;for(i=0;i<N;++i){
+    for(j=0;j<N;++j){
+      complex x = (i+1)*dx;
+      complex y = (j+1)*dx;
+      if( i == 0. || j == 0 || i==N-1 || j == N-1) V[i*N+j] = 0.;
+      else V[i*N+j] = 1. - 2./cpow(x,2) - 2./cpow(y,2);
+    }
+  }
+  //printmatrix(V, N);
+}
+void boundary_V1(complex * U, int N, double dx, double t){
+  int i, j;for(i=0;i<N;++i){
+    for(j=0;j<N;++j){
+      if( i == 0 || j == 0) U[i*N+j] = 0.;
+      else if( i == N-1 || j == N-1){
+	complex x = i*dx; complex y = j*dx;
+	U[i*N+j] = cpow(x,2)*cpow(y,2)*cexp(I*t);
+      }
+    }
+  }
+}
+void advance_system(complex * U, int N, double dt, double dx, double t){
+  t += dt;
+  complex V[N*N]; make_V1(V, N, dx);
+  advance_yexp(U, N, dt, dx, V);
+  boundary_V1(U, N, dx, dt);
   advance_ximp(U, N, dt, dx);
-  advance_xexp(U, N, dt, dx);
+  boundary_V1(U, N, dx, dt);
+  advance_xexp(U, N, dt, dx, V);
+  boundary_V1(U, N, dx, dt);
   advance_yimp(U, N, dt, dx);
+  boundary_V1(U, N, dx, dt);
   // gaussbound(U, N, dx);
 }
 
@@ -244,12 +293,12 @@ int main(int argc, char ** argv){
   fid = fopen("initiali.dat", "w");
   int N = 50;
   double T = atof(argv[1]); double dt = atof(argv[2]); double t = 0.;
-  double L = 4.; double ds = L/((double) N);
+  double L = 1.; double ds = L/((double) N);
   complex U[N*N];
-  initialize_system(U, N, ds);
+  initialize_system2(U, N, ds);
   write_U(fid, U, N, ds);
   while(t<T){
-    advance_system(U, N, dt, ds);
+    advance_system(U, N, dt, ds, t);
     t+= dt;
     //break;
   }
