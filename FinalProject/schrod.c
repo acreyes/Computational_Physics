@@ -131,10 +131,10 @@ void initialize_system(complex * U, int N, double dx){
   int i, j;
   for(i=0;i<N;++i){
     for(j=0;j<N;++j){
-      complex x = (i-Nh)*dx;
-      complex y = (j-Nh)*dx;
+      complex x = (i)*dx*3.14;
+      complex y = (j)*dx*3.14;
       complex r2 = cpow(x,2)+cpow(y,2);
-      U[i*N + j] = cexp(-r2);
+      U[i*N + j] = csin(x) + csin(y);//cexp(-x*I - y*I);
     }
   }
 }
@@ -142,97 +142,109 @@ void write_U(FILE * fid, complex * U, int N, double ds){
   int i,j;
   for(i=0;i<N;++i){
     for(j=0;j<N;++j){
-      fprintf(fid, "%e   %e   %e\n",(double)i *ds, (double)j *ds, pow(cabs(U[i*N+j]),2));
+      fprintf(fid, "%e   %e   %e\n",(double)i *ds, (double)j *ds, cabs(cpow(U[i*N+j],2)));
     }
     //fprintf(fid, "\n");
   }
 }
-void getrow(complex * U, complex * u, int i, int N){ //note that this does not get the boundary terms
-  int j;for(j=1;j<N;++j){                          
-    u[j-1] = U[i*N + j];
+void getrow(complex * U, complex * u, int i, int N){ //note that this does not get the boundboury terms
+  int j;for(j=0;j<N;++j){                          
+    u[j] = U[i*N + j];
   }
 }
 void getcol(complex * U, complex * u, int j, int N){ //note that this does not get the boundary terms
-  int i;for(i=1;i<N;++i){                          
-    u[i-1] = U[i*N + j]; 
+  int i;for(i=0;i<N;++i){                          
+    u[i] = U[i*N + j]; 
   }
 }
 void setcol(complex * U, complex *u, int j, int N){
-  int i;for(i=0;i<N-2;++i){
-    U[(i+1)*N + j] = u[i];
+  int i;for(i=0;i<N;++i){
+    U[(i)*N + j] = u[i];
   }
 }
 void setrow(complex * U, complex * u, int i, int N){
-  int j;for(j=0;j<N-2;++j){
-    U[(i)*N + j+1] = u[j];
+  int j;for(j=0;j<N;++j){
+    U[(i)*N + j] = u[j];
   }
 }
 void make_D(complex * D, int N, double dx, double dt, complex pm){
-  int Nd = N-2;
-  complex coeff = -100.*I*pm*dt/(2.*cpow((complex)dx,2));
+  complex coeff = I*pm*dt/(2.*cpow((complex)dx,2));
   int l,m;
-  for(l=0;l<Nd;++l){
-    for(m=0;m<Nd;++m){
-      if(l == m) D[l*Nd + m] = 1. - coeff*2.;
-      else if( l+1 == m) D[l*Nd + m] = coeff;
-      else if( l == m+1) D[l*Nd + m] = coeff;
-      else D[l*Nd + m] = 0.; 
+  for(l=0;l<N;++l){
+    for(m=0;m<N;++m){
+      if(l == m) D[l*N + m] = 1. - coeff*2.;
+      else if( l+1 == m) D[l*N + m] = coeff;
+      else if( l == m+1) D[l*N + m] = coeff;
+      else D[l*N + m] = 0.; 
     }
   }
 }
 void advance_yexp(complex * U, int N, double dt, double dx){
   int k; 
-  for(k=1;k<N-1;++k){ //loop over columns of U
-    complex Dy[(N-2)*(N-2)]; make_D(Dy, N, dx, dt, 1.);  //make update matrix
-    complex uy[N-2]; getcol(U, uy, k, N);  
-    complex uy_new[N-2]; matrix_dot(Dy, uy, uy_new, N-2);//update column
+  for(k=0;k<N;++k){ //loop over columns of U
+    complex Dy[(N)*(N)]; make_D(Dy, N, dx, dt, 1.);  //make update matrix
+    complex uy[N]; getcol(U, uy, k, N);  
+    complex uy_new[N]; matrix_dot(Dy, uy, uy_new, N);//update column
     setcol(U, uy_new, k, N);
   }
 }
 void advance_xexp(complex * U, int N, double dt, double dx){
   int k;
-  for(k=1;k<N-1;++k){
-    complex Dx[(N-2)*(N-2)]; make_D(Dx, N, dx, dt, 1.);//make derivative matrix
-    complex ux[N-2], ux_new[N-2]; getrow(U, ux, k, N);   //get row to update
-    matrix_dot(Dx, ux, ux_new, N-2); setrow(U, ux_new, k, N);
+  for(k=0;k<N;++k){
+    complex Dx[(N)*(N)]; make_D(Dx, N, dx, dt, 1.);//make derivative matrix
+    complex ux[N], ux_new[N]; getrow(U, ux, k, N);   //get row to update
+    matrix_dot(Dx, ux, ux_new, N); setrow(U, ux_new, k, N);
   }
 }
 void advance_ximp(complex * U, int N, double dt, double dx){
   int k;
-  for(k=1;k<N-1;++k){
-    complex Dx[(N-2)*(N-2)]; make_D(Dx, N, dx, dt, -1.);//make derivative matrix
-    complex Dxi[(N-2)*(N-2)]; inverse_triD(Dx, Dxi, N-2);//invert it
-    complex ux[N-2], ux_new[N-2]; getrow(U, ux, k, N);   //get row to update
-    matrix_dot(Dxi, ux, ux_new, N-2); setrow(U, ux_new, k, N);
+  for(k=0;k<N;++k){
+    complex Dx[(N)*(N)]; make_D(Dx, N, dx, dt, -1.);//make derivative matrix
+    complex Dxi[(N)*(N)]; inverse_triD(Dx, Dxi, N);//invert it
+    complex ux[N], ux_new[N]; getrow(U, ux, k, N);   //get row to update
+    matrix_dot(Dxi, ux, ux_new, N); setrow(U, ux_new, k, N);
     //    printf("\n"); print_array(ux, N-2);
     //printf("\n"); print_array(ux_new, N-2);
   }
 }
 void advance_yimp(complex * U, int N, double dt, double dx){
   int k; 
-  for(k=1;k<N-1;++k){ //loop over columns of U
-    complex Dy[(N-2)*(N-2)]; make_D(Dy, N, dx, dt, -1.);  //make update matrix
-    complex Dyi[(N-2)*(N-2)]; inverse_triD(Dy, Dyi, N-2);
-    complex uy[N-2]; getcol(U, uy, k, N);  
-    complex uy_new[N-2]; matrix_dot(Dyi, uy, uy_new, N-2);//update column
+  for(k=0;k<N;++k){ //loop over columns of U
+    complex Dy[(N)*(N)]; make_D(Dy, N, dx, dt, -1.);  //make update matrix
+    complex Dyi[(N)*(N)]; inverse_triD(Dy, Dyi, N);
+    complex uy[N]; getcol(U, uy, k, N);  
+    complex uy_new[N]; matrix_dot(Dyi, uy, uy_new, N);//update column
     setcol(U, uy_new, k, N);
   }
 }
+void gaussbound(complex * U, int N, double dx){
+  int Nh = N/2;
+  int i, j;for(j=0;j<N;++j){
+    i=0;
+    complex x = (i)*dx;
+    complex y = (j-Nh)*dx;
+    complex r2 = cpow(x,2)+cpow(y,2);
+    U[i*N + j] = cexp(-r2);  
+  }
+}
+
 void advance_system(complex * U, int N, double dt, double dx){
   advance_yexp(U, N, dt, dx);
   advance_ximp(U, N, dt, dx);
   advance_xexp(U, N, dt, dx);
   advance_yimp(U, N, dt, dx);
+  // gaussbound(U, N, dx);
 }
+
 /////////////////////////MAIN/////////////////////////////
 int main(int argc, char ** argv){
   // ./a.out T dt
   FILE * fid, * fnew;
   fnew = fopen("heati.dat","w");
   fid = fopen("initiali.dat", "w");
-  int N = 200;
+  int N = 50;
   double T = atof(argv[1]); double dt = atof(argv[2]); double t = 0.;
-  double L = 5.; double ds = L/((double) N);
+  double L = 4.; double ds = L/((double) N);
   complex U[N*N];
   initialize_system(U, N, ds);
   write_U(fid, U, N, ds);
