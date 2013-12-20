@@ -131,10 +131,11 @@ void initialize_system1(complex * U, int N, double dx){
   int i, j;
   for(i=0;i<N;++i){
     for(j=0;j<N;++j){
-      complex x = (i)*dx*3.14;
-      complex y = (j)*dx*3.14;
+      complex x = (i-Nh)*dx;
+      complex y = (j-Nh)*dx;
       complex r2 = cpow(x,2)+cpow(y,2);
-      U[i*N + j] = csin(x) + csin(y);//cexp(-x*I - y*I);
+      U[i*N + j] = cexp(-(r2));
+      U[i*N +j] *= sin(3.14*y*2./6.);
     }
   }
 }
@@ -152,8 +153,8 @@ void initialize_system2(complex * U, int N, double dx){
 }
 void write_U(FILE * fid, complex * U, int N, double ds){
   int i,j;
-  for(i=0;i<N;++i){
-    for(j=0;j<N;++j){
+  for(i=1;i<N-1;++i){
+    for(j=1;j<N-1;++j){
       fprintf(fid, "%e   %e   %e\n",(double)i *ds, (double)j *ds, creal(conj(U[i*N+j])*U[i*N+j]));
     }
     //fprintf(fid, "\n");
@@ -249,13 +250,21 @@ void gaussbound(complex * U, int N, double dx){
     U[i*N + j] = cexp(-r2);  
   }
 }
+void make_V0(complex * V, int N, double dx){
+  int i, j;for(i=0;i<N;++i){
+    for(j=0;j<N;++j){
+      V[i*N+j] = 0.;
+    }
+  }
+  //printmatrix(V, N);
+}
 void make_V1(complex * V, int N, double dx){
   int i, j;for(i=0;i<N;++i){
     for(j=0;j<N;++j){
-      complex x = (i+1)*dx;
-      complex y = (j+1)*dx;
-      if( i == 0. || j == 0 || i==N-1 || j == N-1) V[i*N+j] = 0.;
-      else V[i*N+j] = 1. - 2./cpow(x,2) - 2./cpow(y,2);
+      complex x = (i-N/2)*dx;
+      complex y = (j-N/2)*dx;
+      if( i == 0. || j == 0 || i==N-1 || j == N-1) V[i*N+j] = 0.;//dont touch boundary
+      else V[i*N+j] = cpow(x,2) + cpow(y,2);
     }
   }
   //printmatrix(V, N);
@@ -264,42 +273,54 @@ void boundary_V1(complex * U, int N, double dx, double t){
   int i, j;for(i=0;i<N;++i){
     for(j=0;j<N;++j){
       if( i == 0 || j == 0) U[i*N+j] = 0.;
-      else if( i == N-1 || j == N-1){
+      /*else if( i == N-1 || j == N-1){
 	complex x = i*dx; complex y = j*dx;
 	U[i*N+j] = cpow(x,2)*cpow(y,2)*cexp(I*t);
-      }
+	}*/
     }
   }
+}
+void boundary0(complex * U, int N){
+  int i, j; complex Utop[N], Ubot[N], Uright[N], Uleft[N];
+  getrow(U, Ubot, 0, N); getrow(U, Utop, N-1, N);getcol(U, Uleft, 0, N); getcol(U, Uright, N-1, N);
+  setrow(U, Utop, 0, N); setrow(U, Ubot, N-1, N);setcol(U, Uright, N-1, N); setcol(U, Uleft, 0, N);
 }
 void advance_system(complex * U, int N, double dt, double dx, double t){
   t += dt;
   complex V[N*N]; make_V1(V, N, dx);
   advance_yexp(U, N, dt, dx, V);
-  boundary_V1(U, N, dx, dt);
+  //boundary_V1(U, N, dx, dt);
   advance_ximp(U, N, dt, dx);
-  boundary_V1(U, N, dx, dt);
+  //boundary_V1(U, N, dx, dt);
   advance_xexp(U, N, dt, dx, V);
-  boundary_V1(U, N, dx, dt);
+  //boundary_V1(U, N, dx, dt);
   advance_yimp(U, N, dt, dx);
-  boundary_V1(U, N, dx, dt);
+  //boundary_V1(U, N, dx, dt);
+  boundary_V1(U, N, dx, t);
   // gaussbound(U, N, dx);
 }
 
 /////////////////////////MAIN/////////////////////////////
 int main(int argc, char ** argv){
   // ./a.out T dt
-  FILE * fid, * fnew;
-  fnew = fopen("heati.dat","w");
+  FILE * fid, * fnew, * f2;
+  f2 = fopen("schrod25.dat","w");
+  fnew = fopen("schrod5.dat","w");
   fid = fopen("initiali.dat", "w");
   int N = 50;
   double T = atof(argv[1]); double dt = atof(argv[2]); double t = 0.;
-  double L = 1.; double ds = L/((double) N);
+  double L = 6.; double ds = L/((double) N);
   complex U[N*N];
-  initialize_system2(U, N, ds);
+  initialize_system1(U, N, ds);
   write_U(fid, U, N, ds);
+  int thing = 0;
   while(t<T){
     advance_system(U, N, dt, ds, t);
     t+= dt;
+    if( t > 0.25 && thing == 0){
+      write_U(f2, U, N, ds);
+      thing = 1;
+    }
     //break;
   }
   write_U(fnew, U, N, ds);
