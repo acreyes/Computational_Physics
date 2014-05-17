@@ -11,5 +11,5 @@ Includes
 * Verlet Leap-Frog method also for cent. grav. well  -- Assignment 2
 * Newton-Rapheson solution to Keplers Eqns           -- Assignment 2
 * Implicit methods-Backward Euler and Crank-Nicholson-- Assignment 3
-* HLL solver for Sod-Shock Tube and Isentropic Wave  -- Assignment 4
+* HLL solver for Sod-Shock Tube and Isentropic Wave  -- Assignment 4 (a much better code for this is in the Hydro repo)
 * 2-D 2nd Order ADI                                  -- Final Project
